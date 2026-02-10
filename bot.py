@@ -1,83 +1,110 @@
-import telebot, time, os
-from database import *
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import json, time, os
 
-# Token dari ENV (Render / hosting)
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 123456789  # ganti dengan Telegram ID kamu
-COIN = "LTC"
-CLAIM_REWARD = 0.001
-REF_BONUS = 0.0005
-CLAIM_INTERVAL = 3600  # 1 jam
+# ================= CONFIG =================
+BOT_TOKEN = "ISI_TOKEN_BOT_KAMU"
+CLAIM_REWARD = 0.000045
+COOLDOWN = 3600  # 1 hour
+AD_BASE_URL = "https://ISI_LINK_IKLAN_KAMU/ad?uid="
+# ==========================================
 
-bot = telebot.TeleBot(BOT_TOKEN)
-db = load_db()
+# Load users
+def load_users():
+    if not os.path.exists("users.json"):
+        return {}
+    with open("users.json", "r") as f:
+        return json.load(f)
 
-@bot.message_handler(commands=["start"])
-def start(msg):
-    uid = msg.from_user.id
-    args = msg.text.split()
-    user = get_user(db, uid)
+def save_users(data):
+    with open("users.json", "w") as f:
+        json.dump(data, f)
 
-    if len(args) > 1 and user["ref"] is None:
-        user["ref"] = args[1]
+users = load_users()
 
-    save_db(db)
+# ================= START =================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
 
-    bot.send_message(uid,
-        f"🚧 *LiteFaucetBot (BETA)*\n\n"
-        f"💰 Reward masih *pending*\n"
-        f"🕒 Claim tiap 1 jam\n"
-        f"👥 Referral aktif\n\n"
-        f"Gunakan /claim untuk mulai.",
-        parse_mode="Markdown"
+    if uid not in users:
+        users[uid] = {
+            "balance": 0,
+            "last_claim": 0
+        }
+        save_users(users)
+
+    keyboard = [
+        [InlineKeyboardButton("💰 Claim LTC", callback_data="claim")],
+        [InlineKeyboardButton("📊 Balance", callback_data="balance")],
+        [InlineKeyboardButton("📜 Rules", callback_data="rules")]
+    ]
+
+    await update.message.reply_text(
+        "🚀 Welcome to LiteFaucetBot\n\n"
+        "Earn free Litecoin every hour.\n"
+        "Complete a short ad to claim.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-@bot.message_handler(commands=["claim"])
-def claim(msg):
-    uid = msg.from_user.id
-    user = get_user(db, uid)
-    now = time.time()
+# ================= MENU =================
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    if now - user["last_claim"] < CLAIM_INTERVAL:
-        sisa = int((CLAIM_INTERVAL - (now - user["last_claim"])) / 60)
-        bot.send_message(uid, f"⏳ Tunggu {sisa} menit lagi.")
-        return
+    uid = str(query.from_user.id)
+    now = int(time.time())
 
-    user["last_claim"] = now
-    user["balance"] += CLAIM_REWARD
+    if query.data == "claim":
+        last = users[uid]["last_claim"]
 
-    # referral bonus
-    if user["ref"] and user["ref"] in db:
-        db[user["ref"]]["balance"] += REF_BONUS
-        db[user["ref"]]["refs"] += 1
+        if now - last < COOLDOWN:
+            remaining = COOLDOWN - (now - last)
+            minutes = remaining // 60
+            await query.message.reply_text(
+                f"⏳ Cooldown active.\nTry again in {minutes} minutes."
+            )
+            return
 
-    save_db(db)
+        ad_link = AD_BASE_URL + uid
+        await query.message.reply_text(
+            "🔔 Complete this ad to receive your reward:\n\n"
+            f"{ad_link}"
+        )
 
-    bot.send_message(uid,
-        f"✅ Claim sukses!\n"
-        f"➕ {CLAIM_REWARD} {COIN} (pending)")
+    elif query.data == "balance":
+        bal = users[uid]["balance"]
+        await query.message.reply_text(f"💰 Your balance: {bal} LTC")
 
-@bot.message_handler(commands=["balance"])
-def balance(msg):
-    user = get_user(db, msg.from_user.id)
-    bot.send_message(msg.from_user.id,
-        f"💰 Pending balance: {user['balance']} {COIN}")
+    elif query.data == "rules":
+        await query.message.reply_text(
+            "📜 Rules:\n"
+            "- 1 account per user\n"
+            "- Cooldown: 60 minutes\n"
+            "- FaucetPay only (later)\n"
+            "- Abuse = ban"
+        )
 
-@bot.message_handler(commands=["referral"])
-def referral(msg):
-    uid = msg.from_user.id
-    bot.send_message(uid,
-        f"👥 Referral link:\n"
-        f"https://t.me/LiteFaucetBot?start={uid}\n\n"
-        f"Total referral: {get_user(db, uid)['refs']}")
+# ================= CALLBACK (MANUAL TEST) =================
+async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    users[uid]["balance"] += CLAIM_REWARD
+    users[uid]["last_claim"] = int(time.time())
+    save_users(users)
 
-@bot.message_handler(commands=["stats"])
-def stats(msg):
-    if msg.from_user.id != ADMIN_ID:
-        bot.send_message(msg.from_user.id, "❌ Hanya admin")
-        return
-    bot.send_message(msg.from_user.id,
-        f"📊 Statistik Bot\n"
-        f"👤 Total user: {len(db)}")
+    await update.message.reply_text(
+        f"✅ Reward added!\nYou received {CLAIM_REWARD} LTC"
+    )
 
-bot.infinity_polling()
+# ================= MAIN =================
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("reward", reward))  # sementara manual
+    app.add_handler(CallbackQueryHandler(menu))
+
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
+
