@@ -1,6 +1,8 @@
-               from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import json, time, os
+
+FINAL VERSION REF SYSTEM ACTIVE
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -186,4 +188,3 @@ def main():
 
 if __name__ == "__main__":
     main()
- 
