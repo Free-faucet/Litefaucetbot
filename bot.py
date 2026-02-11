@@ -1,5 +1,4 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import json, time, os
 
