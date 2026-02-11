@@ -1,16 +1,17 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import json, time, os
 
-FINAL VERSION REF SYSTEM ACTIVE
+print("FINAL VERSION REF SYSTEM ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CLAIM_REWARD = 0.000045
-COOLDOWN = 3600  # 60 minutes
+COOLDOWN = 3600
 MIN_WITHDRAW = 0.003
-REF_PERCENT = 0.07  # 7%
 AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
+
 # ==========================================
 
 # ================= DATABASE =================
