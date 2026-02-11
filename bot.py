@@ -2,16 +2,20 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import json, time, os
 
-print("FINAL VERSION REF SYSTEM ACTIVE")
+print("FINAL VERSION LIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CLAIM_REWARD = 0.000045
 COOLDOWN = 3600
 MIN_WITHDRAW = 0.003
-AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
+REF_PERCENT = 0.07
 
+AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
+CHANNEL_LINK = "https://t.me/litefaucet57"
+CHANNEL_USERNAME = "@litefaucet57"
 # ==========================================
+
 
 # ================= DATABASE =================
 def load_users():
@@ -26,11 +30,12 @@ def save_users(data):
 
 users = load_users()
 
+
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
 
-    # Register new user
+    # Register user
     if uid not in users:
         users[uid] = {
             "balance": 0,
@@ -41,15 +46,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "claimed_once": False
         }
 
-        # Referral system
-        if context.args:
+        # Referral
+        if context.args and context.args[0] != "reward":
             referrer = context.args[0]
             if referrer != uid and referrer in users:
                 users[uid]["ref_by"] = referrer
 
         save_users(users)
 
-    # ===== REWARD RETURN FROM AD =====
+    # ===== RETURN FROM AD =====
     if context.args and context.args[0] == "reward":
 
         if not users[uid]["pending"]:
@@ -66,24 +71,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users[uid]["last_claim"] = now
         users[uid]["pending"] = False
 
-        # Referral reward (ONLY first claim)
+        # Referral reward (first claim only)
         if not users[uid]["claimed_once"] and users[uid]["ref_by"]:
             ref_id = users[uid]["ref_by"]
-            ref_reward = CLAIM_REWARD * REF_PERCENT
-
-            users[ref_id]["balance"] += ref_reward
-            users[ref_id]["ref_earned"] += ref_reward
+            if ref_id in users:
+                ref_reward = CLAIM_REWARD * REF_PERCENT
+                users[ref_id]["balance"] += ref_reward
+                users[ref_id]["ref_earned"] += ref_reward
 
         users[uid]["claimed_once"] = True
         save_users(users)
 
         await update.message.reply_text(
-            f"✅ Reward received!\n"
-            f"+{CLAIM_REWARD} LTC added."
+            f"✅ Reward received!\n+{CLAIM_REWARD} LTC added."
         )
         return
 
-    # Main Menu
+    # ===== MAIN MENU =====
     keyboard = [
         [InlineKeyboardButton("💰 Claim LTC", callback_data="claim")],
         [InlineKeyboardButton("📊 Balance", callback_data="balance")],
@@ -104,6 +108,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+
 # ================= MENU =================
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -112,10 +117,24 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(query.from_user.id)
     now = int(time.time())
 
-    # CLAIM
+    # ===== CLAIM =====
     if query.data == "claim":
-        last = users[uid]["last_claim"]
 
+        # Check channel membership
+        try:
+            member = await context.bot.get_chat_member(CHANNEL_USERNAME, uid)
+            if member.status not in ["member", "administrator", "creator"]:
+                raise Exception("Not member")
+        except:
+            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)]]
+            await query.message.reply_text(
+                "⚠️ You must join our channel first.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        # Cooldown check
+        last = users[uid]["last_claim"]
         if now - last < COOLDOWN:
             remaining = (COOLDOWN - (now - last)) // 60
             await query.message.reply_text(
@@ -126,20 +145,20 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users[uid]["pending"] = True
         save_users(users)
 
+        # DIRECT BUTTON TO AD (NO TEXT LINK)
+        keyboard = [[InlineKeyboardButton("🎁 Watch Ad & Claim", url=AD_LINK)]]
+
         await query.message.reply_text(
-            "🔔 To receive your reward:\n\n"
-            "1️⃣ Click link\n"
-            "2️⃣ Watch full ad\n"
-            "3️⃣ Return to Telegram\n\n"
-            f"{AD_LINK}"
+            "🔔 Click button below and watch full ad to receive reward.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # BALANCE
+    # ===== BALANCE =====
     elif query.data == "balance":
         bal = users[uid]["balance"]
         await query.message.reply_text(f"💰 Balance: {bal:.6f} LTC")
 
-    # REFERRAL
+    # ===== REFERRAL =====
     elif query.data == "referral":
         bot_username = (await context.bot.get_me()).username
         ref_link = f"https://t.me/{bot_username}?start={uid}"
@@ -151,7 +170,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "You earn 7% when your referral claims first time."
         )
 
-    # WITHDRAW
+    # ===== WITHDRAW =====
     elif query.data == "withdraw":
         bal = users[uid]["balance"]
 
@@ -166,15 +185,17 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💸 FaucetPay withdrawal coming soon."
         )
 
-    # RULES
+    # ===== RULES =====
     elif query.data == "rules":
         await query.message.reply_text(
             "📜 Rules:\n"
             "- One account per user\n"
             "- 60 minutes cooldown\n"
-            "- Referral only counts first claim\n"
+            "- Referral counts first claim only\n"
+            "- Must join channel\n"
             "- Abuse = ban"
         )
+
 
 # ================= MAIN =================
 def main():
@@ -185,6 +206,7 @@ def main():
 
     print("Bot is running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
