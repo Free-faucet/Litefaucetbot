@@ -2,7 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import json, time, os
 
-print("FINAL STABLE VERSION LIVE")
+print("FINAL PRO VERSION ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -30,7 +30,7 @@ def save_users(data):
 users = load_users()
 
 
-# ================= CHECK CHANNEL =================
+# ================= SECURITY =================
 async def is_joined(user_id, context):
     try:
         member = await context.bot.get_chat_member(CHANNEL_USERNAME, user_id)
@@ -39,7 +39,20 @@ async def is_joined(user_id, context):
         return False
 
 
-# ================= MAIN MENU TEXT =================
+def create_user(uid):
+    users[uid] = {
+        "balance": 0,
+        "last_claim": 0,
+        "pending": False,
+        "ref_by": None,
+        "ref_earned": 0,
+        "claimed_once": False,
+        "blocked": False
+    }
+    save_users(users)
+
+
+# ================= MENU UI =================
 def main_menu_text():
     return (
         "🚀 LiteFaucetBot LIVE\n\n"
@@ -72,21 +85,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
 
     if uid not in users:
-        users[uid] = {
-            "balance": 0,
-            "last_claim": 0,
-            "pending": False,
-            "ref_by": None,
-            "ref_earned": 0,
-            "claimed_once": False
-        }
+        create_user(uid)
 
+        # Referral registration (ANTI SELF & ANTI CHANGE)
         if context.args and context.args[0] != "reward":
             referrer = context.args[0]
             if referrer != uid and referrer in users:
                 users[uid]["ref_by"] = referrer
+                save_users(users)
 
+    # ===== RETURN FROM AD =====
+    if context.args and context.args[0] == "reward":
+
+        if not users[uid]["pending"]:
+            await update.message.reply_text("❌ No pending reward.")
+            return
+
+        now = int(time.time())
+
+        if now - users[uid]["last_claim"] < COOLDOWN:
+            await update.message.reply_text("⏳ Cooldown still active.")
+            return
+
+        # Reward user
+        users[uid]["balance"] += CLAIM_REWARD
+        users[uid]["last_claim"] = now
+        users[uid]["pending"] = False
+
+        # Referral reward (FIRST CLAIM ONLY)
+        if not users[uid]["claimed_once"] and users[uid]["ref_by"]:
+            ref_id = users[uid]["ref_by"]
+            if ref_id in users:
+                ref_reward = CLAIM_REWARD * REF_PERCENT
+                users[ref_id]["balance"] += ref_reward
+                users[ref_id]["ref_earned"] += ref_reward
+
+        users[uid]["claimed_once"] = True
         save_users(users)
+
+        await update.message.reply_text(
+            f"✅ Reward received!\n+{CLAIM_REWARD} LTC added."
+        )
+        return
 
     await update.message.reply_text(
         main_menu_text(),
@@ -103,16 +143,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = int(time.time())
 
     if uid not in users:
-        users[uid] = {
-            "balance": 0,
-            "last_claim": 0,
-            "pending": False,
-            "ref_by": None,
-            "ref_earned": 0,
-            "claimed_once": False
-        }
+        create_user(uid)
 
-    # ===== BACK TO MENU =====
+    # ===== BACK =====
     if query.data == "menu":
         await query.edit_message_text(
             main_menu_text(),
@@ -122,7 +155,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ===== CLAIM =====
     elif query.data == "claim":
 
-        # CHECK CHANNEL
         joined = await is_joined(uid, context)
         if not joined:
             await query.edit_message_text(
@@ -134,10 +166,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        last = users[uid]["last_claim"]
-
-        if now - last < COOLDOWN:
-            remaining = (COOLDOWN - (now - last)) // 60
+        if now - users[uid]["last_claim"] < COOLDOWN:
+            remaining = (COOLDOWN - (now - users[uid]["last_claim"])) // 60
             await query.edit_message_text(
                 f"⏳ Cooldown active.\nTry again in {remaining} minutes.",
                 reply_markup=back_keyboard()
@@ -198,11 +228,11 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "rules":
         await query.edit_message_text(
             "📜 Rules:\n\n"
-            "- One account per user\n"
+            "- One account per Telegram ID\n"
             "- 60 minutes cooldown\n"
             "- Referral counts first claim only\n"
             "- Must join channel\n"
-            "- Abuse = ban",
+            "- Abuse = permanent ban",
             reply_markup=back_keyboard()
         )
 
@@ -214,10 +244,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(menu))
 
-    print("Bot running...")
+    print("Bot running stable...")
     app.run_polling()
 
 
 if __name__ == "__main__":
     main()
-    
