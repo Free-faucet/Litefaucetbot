@@ -86,7 +86,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
-        # Referral register (anti self)
         if context.args and context.args[0] != "reward":
             referrer = context.args[0]
             if referrer != uid and referrer in users:
@@ -110,7 +109,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users[uid]["last_claim"] = now
         users[uid]["pending"] = False
 
-        # Referral reward (first claim only)
         if not users[uid]["claimed_once"] and users[uid]["ref_by"]:
             ref_id = users[uid]["ref_by"]
             if ref_id in users:
@@ -174,7 +172,10 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_users(users)
 
         await query.edit_message_text(
-            "🎁 Click below to watch ad and claim reward.",
+            "🎁 Watch Ad & Claim\n\n"
+            "🔒 Secure official faucet link\n"
+            "You will be redirected safely.\n\n"
+            "Click button below to continue:",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🎁 Watch Ad & Claim", url=AD_LINK)],
                 [InlineKeyboardButton("🔙 Back to Menu", callback_data="menu")]
@@ -242,3 +243,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+                
