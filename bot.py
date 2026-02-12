@@ -2,7 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import json, time, os
 
-print("FINAL PRO VERSION ACTIVE")
+print("FINAL DIRECT CLAIM VERSION ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -46,13 +46,12 @@ def create_user(uid):
         "pending": False,
         "ref_by": None,
         "ref_earned": 0,
-        "claimed_once": False,
-        "blocked": False
+        "claimed_once": False
     }
     save_users(users)
 
 
-# ================= MENU UI =================
+# ================= UI =================
 def main_menu_text():
     return (
         "🚀 LiteFaucetBot LIVE\n\n"
@@ -87,7 +86,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
-        # Referral registration (ANTI SELF & ANTI CHANGE)
+        # Referral register (anti self)
         if context.args and context.args[0] != "reward":
             referrer = context.args[0]
             if referrer != uid and referrer in users:
@@ -107,12 +106,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⏳ Cooldown still active.")
             return
 
-        # Reward user
         users[uid]["balance"] += CLAIM_REWARD
         users[uid]["last_claim"] = now
         users[uid]["pending"] = False
 
-        # Referral reward (FIRST CLAIM ONLY)
+        # Referral reward (first claim only)
         if not users[uid]["claimed_once"] and users[uid]["ref_by"]:
             ref_id = users[uid]["ref_by"]
             if ref_id in users:
@@ -145,14 +143,12 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
-    # ===== BACK =====
     if query.data == "menu":
         await query.edit_message_text(
             main_menu_text(),
             reply_markup=main_keyboard()
         )
 
-    # ===== CLAIM =====
     elif query.data == "claim":
 
         joined = await is_joined(uid, context)
@@ -185,7 +181,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
 
-    # ===== BALANCE =====
     elif query.data == "balance":
         bal = users[uid]["balance"]
         await query.edit_message_text(
@@ -193,7 +188,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # ===== REFERRAL =====
     elif query.data == "referral":
         bot_username = (await context.bot.get_me()).username
         ref_link = f"https://t.me/{bot_username}?start={uid}"
@@ -207,7 +201,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # ===== WITHDRAW =====
     elif query.data == "withdraw":
         bal = users[uid]["balance"]
 
@@ -224,7 +217,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # ===== RULES =====
     elif query.data == "rules":
         await query.edit_message_text(
             "📜 Rules:\n\n"
