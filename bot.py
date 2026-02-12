@@ -117,84 +117,110 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(query.from_user.id)
     now = int(time.time())
 
-    # ===== CLAIM =====
-    if query.data == "claim":
+    # MAIN KEYBOARD
+    main_keyboard = [
+        [InlineKeyboardButton("💰 Claim LTC", callback_data="claim")],
+        [InlineKeyboardButton("📊 Balance", callback_data="balance")],
+        [InlineKeyboardButton("👥 Referral", callback_data="referral")],
+        [InlineKeyboardButton("💸 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("📜 Rules", callback_data="rules")]
+    ]
 
-        # Check channel membership
-        try:
-            member = await context.bot.get_chat_member(CHANNEL_USERNAME, uid)
-            if member.status not in ["member", "administrator", "creator"]:
-                raise Exception("Not member")
-        except:
-            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)]]
-            await query.message.reply_text(
-                "⚠️ You must join our channel first.",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            return
+    back_keyboard = [
+        [InlineKeyboardButton("🔙 Back to Menu", callback_data="menu")]
+    ]
 
-        # Cooldown check
+    # ================= BACK TO MENU =================
+    if query.data == "menu":
+        await query.edit_message_text(
+            "🚀 LiteFaucetBot LIVE\n\n"
+            "Coin: Litecoin (LTC)\n"
+            "Reward: 0.000045 LTC per claim\n"
+            "Referral: 7% (first claim only)\n"
+            "Cooldown: 60 minutes\n"
+            "Min Withdraw: 0.003 LTC\n"
+            "Withdraw: FaucetPay ONLY\n\n"
+            "Status: GLOBAL 🌍",
+            reply_markup=InlineKeyboardMarkup(main_keyboard)
+        )
+
+    # ================= CLAIM =================
+    elif query.data == "claim":
         last = users[uid]["last_claim"]
+
         if now - last < COOLDOWN:
             remaining = (COOLDOWN - (now - last)) // 60
-            await query.message.reply_text(
-                f"⏳ Cooldown active.\nTry again in {remaining} minutes."
+            await query.edit_message_text(
+                f"⏳ Cooldown active.\nTry again in {remaining} minutes.",
+                reply_markup=InlineKeyboardMarkup(back_keyboard)
             )
             return
 
         users[uid]["pending"] = True
         save_users(users)
 
-        # DIRECT BUTTON TO AD (NO TEXT LINK)
-        keyboard = [[InlineKeyboardButton("🎁 Watch Ad & Claim", url=AD_LINK)]]
+        ad_keyboard = [
+            [InlineKeyboardButton("🎁 Watch Ad & Claim", url=AD_LINK)],
+            [InlineKeyboardButton("🔙 Back to Menu", callback_data="menu")]
+        ]
 
-        await query.message.reply_text(
-            "🔔 Click button below and watch full ad to receive reward.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "🎁 Click button below to watch ad and claim reward.",
+            reply_markup=InlineKeyboardMarkup(ad_keyboard)
         )
 
-    # ===== BALANCE =====
+    # ================= BALANCE =================
     elif query.data == "balance":
         bal = users[uid]["balance"]
-        await query.message.reply_text(f"💰 Balance: {bal:.6f} LTC")
 
-    # ===== REFERRAL =====
+        await query.edit_message_text(
+            f"💰 Your Balance:\n\n{bal:.6f} LTC",
+            reply_markup=InlineKeyboardMarkup(back_keyboard)
+        )
+
+    # ================= REFERRAL =================
     elif query.data == "referral":
         bot_username = (await context.bot.get_me()).username
         ref_link = f"https://t.me/{bot_username}?start={uid}"
         earned = users[uid]["ref_earned"]
 
-        await query.message.reply_text(
-            f"👥 Your Referral Link:\n{ref_link}\n\n"
-            f"Referral Earnings: {earned:.6f} LTC\n\n"
-            "You earn 7% when your referral claims first time."
+        await query.edit_message_text(
+            f"👥 Referral System\n\n"
+            f"Your Link:\n{ref_link}\n\n"
+            f"Earnings: {earned:.6f} LTC\n\n"
+            "You earn 7% from first claim only.",
+            reply_markup=InlineKeyboardMarkup(back_keyboard)
         )
 
-    # ===== WITHDRAW =====
+    # ================= WITHDRAW =================
     elif query.data == "withdraw":
         bal = users[uid]["balance"]
 
         if bal < MIN_WITHDRAW:
-            await query.message.reply_text(
+            await query.edit_message_text(
                 f"❌ Minimum withdraw: {MIN_WITHDRAW} LTC\n"
-                f"Your balance: {bal:.6f} LTC"
+                f"Your balance: {bal:.6f} LTC",
+                reply_markup=InlineKeyboardMarkup(back_keyboard)
             )
             return
 
-        await query.message.reply_text(
-            "💸 FaucetPay withdrawal coming soon."
+        await query.edit_message_text(
+            "💸 FaucetPay withdrawal coming soon.",
+            reply_markup=InlineKeyboardMarkup(back_keyboard)
         )
 
-    # ===== RULES =====
+    # ================= RULES =================
     elif query.data == "rules":
-        await query.message.reply_text(
-            "📜 Rules:\n"
+        await query.edit_message_text(
+            "📜 Rules:\n\n"
             "- One account per user\n"
             "- 60 minutes cooldown\n"
             "- Referral counts first claim only\n"
             "- Must join channel\n"
-            "- Abuse = ban"
+            "- Abuse = ban",
+            reply_markup=InlineKeyboardMarkup(back_keyboard)
         )
+
 
 
 # ================= MAIN =================
