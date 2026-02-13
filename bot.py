@@ -14,7 +14,6 @@ MIN_WITHDRAW = 0.003
 WITHDRAW_COOLDOWN = 86400  # 24 jam
 REF_PERCENT = 0.07
 
-AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
 CHANNEL_USERNAME = "@litefaucet57"
 # ==========================================
 
@@ -162,73 +161,67 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ================= WITHDRAW =================
     elif query.data == "withdraw":
-    bal = users[uid]["balance"]
-    now = int(time.time())
 
-    if bal < MIN_WITHDRAW:
-        await query.edit_message_text("Minimum withdraw not reached.")
-        return
+        bal = users[uid]["balance"]
 
-    # minimum check
-    if bal < MIN_WITHDRAW:
-        await query.edit_message_text(
-            f"❌ Minimum withdraw: {MIN_WITHDRAW} LTC\n"
-            f"Your balance: {bal:.6f} LTC\n\n"
-            "Don't have a FaucetPay account?\n"
-            "Register here:\n"
-            "https://faucetpay.io/?r=502868",
-            reply_markup=back_keyboard()
-        )
-        return
+        if bal < MIN_WITHDRAW:
+            await query.edit_message_text(
+                f"❌ Minimum withdraw: {MIN_WITHDRAW} LTC\n"
+                f"Your balance: {bal:.6f} LTC\n\n"
+                "Don't have a FaucetPay account?\n"
+                "Register here:\n"
+                "https://faucetpay.io/?r=502868",
+                reply_markup=back_keyboard()
+            )
+            return
 
-    # anti multi withdraw 24 jam
-    if now - users[uid]["last_withdraw"] < WITHDRAW_COOLDOWN:
-        remaining = (WITHDRAW_COOLDOWN - (now - users[uid]["last_withdraw"])) // 3600
-        await query.edit_message_text(
-            f"⛔ Withdraw allowed once per 24 hours.\n"
-            f"Try again in {remaining} hours.\n\n"
-            "Don't have a FaucetPay account?\n"
-            "Register here:\n"
-            "https://faucetpay.io/?r=502868",
-            reply_markup=back_keyboard()
-        )
-        return
+        if now - users[uid]["last_withdraw"] < WITHDRAW_COOLDOWN:
+            remaining = (WITHDRAW_COOLDOWN - (now - users[uid]["last_withdraw"])) // 3600
+            await query.edit_message_text(
+                f"⛔ Withdraw allowed once per 24 hours.\n"
+                f"Try again in {remaining} hours.\n\n"
+                "Don't have a FaucetPay account?\n"
+                "Register here:\n"
+                "https://faucetpay.io/?r=502868",
+                reply_markup=back_keyboard()
+            )
+            return
 
-    username = users[uid]["fp_username"]
+        username = users[uid]["fp_username"]
 
-    if not username:
-        await query.edit_message_text(
-            "⚠️ FaucetPay username not set.\n"
-            "Please contact admin to set your username.\n\n"
-            "Don't have a FaucetPay account?\n"
-            "Register here:\n"
-            "https://faucetpay.io/?r=502868",
-            reply_markup=back_keyboard()
-        )
-        return
+        if not username:
+            await query.edit_message_text(
+                "⚠️ FaucetPay username not set.\n"
+                "Please contact admin to set your username.\n\n"
+                "Don't have a FaucetPay account?\n"
+                "Register here:\n"
+                "https://faucetpay.io/?r=502868",
+                reply_markup=back_keyboard()
+            )
+            return
 
-    success, message = send_withdraw(username, bal)
+        success, message = send_withdraw(username, bal)
 
-    if success:
-        users[uid]["balance"] = 0
-        users[uid]["last_withdraw"] = now
-        save_users(users)
+        if success:
+            users[uid]["balance"] = 0
+            users[uid]["last_withdraw"] = now
+            save_users(users)
 
-        await query.edit_message_text(
-            f"✅ Withdraw successful!\n"
-            f"Sent {bal:.6f} LTC to {username}",
-            reply_markup=back_keyboard()
-        )
-    else:
-        await query.edit_message_text(
-            f"❌ Withdraw failed:\n{message}\n\n"
-            "Don't have a FaucetPay account?\n"
-            "Register here:\n"
-            "https://faucetpay.io/?r=502868",
-            reply_markup=back_keyboard()
-        )
+            await query.edit_message_text(
+                f"✅ Withdraw successful!\n"
+                f"Sent {bal:.6f} LTC to {username}",
+                reply_markup=back_keyboard()
+            )
+        else:
+            await query.edit_message_text(
+                f"❌ Withdraw failed:\n{message}\n\n"
+                "Don't have a FaucetPay account?\n"
+                "Register here:\n"
+                "https://faucetpay.io/?r=502868",
+                reply_markup=back_keyboard()
+            )
 
-
+    # ================= MENU =================
     elif query.data == "menu":
         await query.edit_message_text(
             main_menu_text(),
