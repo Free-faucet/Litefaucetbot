@@ -163,6 +163,11 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= WITHDRAW =================
     elif query.data == "withdraw":
     bal = users[uid]["balance"]
+    now = int(time.time())
+
+    if bal < MIN_WITHDRAW:
+        await query.edit_message_text("Minimum withdraw not reached.")
+        return
 
     # minimum check
     if bal < MIN_WITHDRAW:
