@@ -1,5 +1,12 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 import json, time, os, requests
 
 print("FINAL SECURE WFD VERSION ACTIVE")
@@ -11,10 +18,11 @@ FAUCETPAY_API = os.getenv("FAUCETPAY_API")
 CLAIM_REWARD = 0.000045
 COOLDOWN = 3600
 MIN_WITHDRAW = 0.003
-WITHDRAW_COOLDOWN = 86400  # 24 jam
-REF_PERCENT = 0.07
+WITHDRAW_COOLDOWN = 86400
 
 CHANNEL_USERNAME = "@litefaucet57"
+
+FAUCETPAY_REGISTER = "https://faucetpay.io/?r=502868"
 # ==========================================
 
 
@@ -32,30 +40,18 @@ def save_users(data):
 users = load_users()
 
 
-# ================= SECURITY =================
-async def is_joined(user_id, context):
-    try:
-        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except:
-        return False
-
-
 def create_user(uid):
     users[uid] = {
         "balance": 0,
         "last_claim": 0,
-        "pending": False,
-        "ref_by": None,
-        "ref_earned": 0,
-        "claimed_once": False,
         "last_withdraw": 0,
-        "fp_username": None
+        "fp_username": None,
+        "waiting_username": False
     }
     save_users(users)
 
 
-# ================= FAUCETPAY API =================
+# ================= FAUCETPAY =================
 def send_withdraw(username, amount):
     url = "https://faucetpay.io/api/v1/send"
 
@@ -85,7 +81,6 @@ def main_menu_text():
         "🚀 LiteFaucetBot LIVE\n\n"
         "Coin: Litecoin (LTC)\n"
         f"Reward: {CLAIM_REWARD} LTC per claim\n"
-        "Referral: 7% (first claim only)\n"
         "Cooldown: 60 minutes\n"
         f"Min Withdraw: {MIN_WITHDRAW} LTC\n"
         "Withdraw: FaucetPay ONLY\n\n"
@@ -96,8 +91,8 @@ def main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 Claim LTC", callback_data="claim")],
         [InlineKeyboardButton("📊 Balance", callback_data="balance")],
-        [InlineKeyboardButton("👥 Referral", callback_data="referral")],
         [InlineKeyboardButton("💸 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("⚙️ Set FaucetPay Username", callback_data="setfp")],
         [InlineKeyboardButton("📜 Rules", callback_data="rules")]
     ])
 
@@ -120,6 +115,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ================= HANDLE TEXT INPUT =================
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+
+    if uid not in users:
+        create_user(uid)
+
+    if users[uid]["waiting_username"]:
+        username = update.message.text.strip()
+
+        users[uid]["fp_username"] = username
+        users[uid]["waiting_username"] = False
+        save_users(users)
+
+        await update.message.reply_text(
+            f"✅ FaucetPay username saved:\n{username}"
+        )
+
+
 # ================= MENU =================
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -131,7 +145,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
-    # ================= CLAIM =================
+    # CLAIM
     if query.data == "claim":
 
         if now - users[uid]["last_claim"] < COOLDOWN:
@@ -151,7 +165,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # ================= BALANCE =================
+    # BALANCE
     elif query.data == "balance":
         bal = users[uid]["balance"]
         await query.edit_message_text(
@@ -159,7 +173,17 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # ================= WITHDRAW =================
+    # SET FAUCETPAY USERNAME
+    elif query.data == "setfp":
+        users[uid]["waiting_username"] = True
+        save_users(users)
+
+        await query.edit_message_text(
+            "Please send your FaucetPay username:",
+            reply_markup=back_keyboard()
+        )
+
+    # WITHDRAW
     elif query.data == "withdraw":
 
         bal = users[uid]["balance"]
@@ -168,9 +192,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 f"❌ Minimum withdraw: {MIN_WITHDRAW} LTC\n"
                 f"Your balance: {bal:.6f} LTC\n\n"
-                "Don't have a FaucetPay account?\n"
-                "Register here:\n"
-                "https://faucetpay.io/?r=502868",
+                "⚠️ FaucetPay account required for withdrawals.\n\n"
+                "Don't have one yet?\n"
+                f"Create your FREE account here:\n{FAUCETPAY_REGISTER}",
                 reply_markup=back_keyboard()
             )
             return
@@ -179,10 +203,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = (WITHDRAW_COOLDOWN - (now - users[uid]["last_withdraw"])) // 3600
             await query.edit_message_text(
                 f"⛔ Withdraw allowed once per 24 hours.\n"
-                f"Try again in {remaining} hours.\n\n"
-                "Don't have a FaucetPay account?\n"
-                "Register here:\n"
-                "https://faucetpay.io/?r=502868",
+                f"Try again in {remaining} hours.",
                 reply_markup=back_keyboard()
             )
             return
@@ -191,11 +212,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not username:
             await query.edit_message_text(
-                "⚠️ FaucetPay username not set.\n"
-                "Please contact admin to set your username.\n\n"
+                "⚠️ Please set your FaucetPay username first.\n\n"
                 "Don't have a FaucetPay account?\n"
-                "Register here:\n"
-                "https://faucetpay.io/?r=502868",
+                f"Register here:\n{FAUCETPAY_REGISTER}",
                 reply_markup=back_keyboard()
             )
             return
@@ -215,13 +234,12 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text(
                 f"❌ Withdraw failed:\n{message}\n\n"
-                "Don't have a FaucetPay account?\n"
-                "Register here:\n"
-                "https://faucetpay.io/?r=502868",
+                "Need a FaucetPay account?\n"
+                f"Register here:\n{FAUCETPAY_REGISTER}",
                 reply_markup=back_keyboard()
             )
 
-    # ================= MENU =================
+    # BACK TO MENU
     elif query.data == "menu":
         await query.edit_message_text(
             main_menu_text(),
@@ -235,6 +253,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(menu))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print("Bot running secure...")
     app.run_polling()
