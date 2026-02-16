@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 import json, time, os, requests
 
-print("FINAL SECURE WFD + REF + CHANNEL + AD ACTIVE")
+print("FINAL SECURE WFD + REF + CHANNEL + AD (15s PROTECTION)")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -24,9 +24,10 @@ MIN_WITHDRAW = 0.003
 CHANNEL_USERNAME = "@litefaucet57"
 
 AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
-SUCCESS_LINK = "https://free-faucet.github.io/ad.litebotmon/success.html"
 
 FAUCETPAY_REGISTER = "https://faucetpay.io/?r=502868"
+
+AD_MIN_TIME = 15  # 🔒 Anti bypass delay
 # ==========================================
 
 
@@ -53,7 +54,8 @@ def create_user(uid):
         "ref_by": None,
         "ref_earned": 0,
         "claimed_once": False,
-        "pending_claim": False
+        "pending_claim": False,
+        "ad_start_time": 0
     }
     save_users(users)
 
@@ -179,6 +181,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         users[uid]["pending_claim"] = True
+        users[uid]["ad_start_time"] = now
         save_users(users)
 
         keyboard = InlineKeyboardMarkup([
@@ -187,7 +190,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         await query.edit_message_text(
-            "📢 Please view the advertisement first.\n\nAfter finishing, click 'I've Completed'.",
+            "📢 Please view the advertisement first.\n\n"
+            "You must wait at least 15 seconds before claiming.",
             reply_markup=keyboard
         )
 
@@ -196,6 +200,16 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not users[uid]["pending_claim"]:
             await query.answer("No pending claim!", show_alert=True)
+            return
+
+        # 🔒 Anti bypass delay
+        ad_time = users[uid].get("ad_start_time", 0)
+        if now - ad_time < AD_MIN_TIME:
+            remaining = AD_MIN_TIME - (now - ad_time)
+            await query.answer(
+                f"⏳ Please wait {remaining} more seconds before claiming.",
+                show_alert=True
+            )
             return
 
         users[uid]["balance"] += CLAIM_REWARD
@@ -228,7 +242,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ================= REFERRAL =================
     elif query.data == "referral":
-        ref_link = f"https://t.me/{context.bot.username}?start={uid}"
+        bot_username = (await context.bot.get_me()).username
+        ref_link = f"https://t.me/{bot_username}?start={uid}"
         earned = users[uid]["ref_earned"]
 
         await query.edit_message_text(
