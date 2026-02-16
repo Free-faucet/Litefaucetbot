@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 import json, time, os, requests
 
-print("FINAL SECURE WFD + REF + CHANNEL + AD (15s PROTECTION)")
+print("FINAL ULTRA SECURE VERSION ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -23,11 +23,10 @@ MIN_WITHDRAW = 0.003
 
 CHANNEL_USERNAME = "@litefaucet57"
 
-AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
+# IMPORTANT: uid will be added automatically
+AD_LINK = "https://free-faucet.github.io/ad.litebotmon/?uid="
 
 FAUCETPAY_REGISTER = "https://faucetpay.io/?r=502868"
-
-AD_MIN_TIME = 15  # 🔒 Anti bypass delay
 # ==========================================
 
 
@@ -48,14 +47,12 @@ def create_user(uid):
     users[uid] = {
         "balance": 0,
         "last_claim": 0,
-        "last_withdraw": 0,
         "fp_username": None,
         "waiting_username": False,
         "ref_by": None,
         "ref_earned": 0,
         "claimed_once": False,
-        "pending_claim": False,
-        "ad_start_time": 0
+        "pending_claim": False
     }
     save_users(users)
 
@@ -123,15 +120,51 @@ def back_keyboard():
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
+    now = int(time.time())
 
     if uid not in users:
         create_user(uid)
 
-        if context.args:
-            ref_id = context.args[0]
-            if ref_id != uid and ref_id in users:
-                users[uid]["ref_by"] = ref_id
+    # HANDLE VERIFY CLAIM
+    if context.args:
+        arg = context.args[0]
+
+        # ================= VERIFY CLAIM =================
+        if arg.startswith("verify_"):
+            verify_id = arg.split("_")[1]
+
+            if verify_id == uid and users[uid]["pending_claim"]:
+
+                # Cooldown check
+                if now - users[uid]["last_claim"] < COOLDOWN:
+                    await update.message.reply_text("⏳ Cooldown active.")
+                    return
+
+                users[uid]["balance"] += CLAIM_REWARD
+                users[uid]["last_claim"] = now
+                users[uid]["pending_claim"] = False
+
+                # REF BONUS (FIRST CLAIM ONLY)
+                if not users[uid]["claimed_once"]:
+                    users[uid]["claimed_once"] = True
+                    ref_id = users[uid]["ref_by"]
+                    if ref_id and ref_id in users:
+                        bonus = CLAIM_REWARD * REF_PERCENT
+                        users[ref_id]["balance"] += bonus
+                        users[ref_id]["ref_earned"] += bonus
+
                 save_users(users)
+
+                await update.message.reply_text(
+                    f"✅ Claim successful!\n+{CLAIM_REWARD} LTC added.",
+                    reply_markup=main_keyboard()
+                )
+                return
+
+        # ================= REF SYSTEM =================
+        if arg in users and arg != uid:
+            users[uid]["ref_by"] = arg
+            save_users(users)
 
     await update.message.reply_text(
         main_menu_text(),
@@ -181,55 +214,19 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         users[uid]["pending_claim"] = True
-        users[uid]["ad_start_time"] = now
         save_users(users)
 
+        ad_url = f"{AD_LINK}{uid}"
+
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 View Advertisement", url=AD_LINK)],
-            [InlineKeyboardButton("✅ I've Completed", callback_data="complete_claim")]
+            [InlineKeyboardButton("🔗 View Advertisement", url=ad_url)],
+            [InlineKeyboardButton("🔙 Back to Menu", callback_data="menu")]
         ])
 
         await query.edit_message_text(
-            "📢 Please view the advertisement first.\n\n"
-            "You must wait at least 15 seconds before claiming.",
+            "📢 Click the link below and complete the advertisement.\n\n"
+            "You will be redirected back automatically after finishing.",
             reply_markup=keyboard
-        )
-
-    # ================= COMPLETE CLAIM =================
-    elif query.data == "complete_claim":
-
-        if not users[uid]["pending_claim"]:
-            await query.answer("No pending claim!", show_alert=True)
-            return
-
-        # 🔒 Anti bypass delay
-        ad_time = users[uid].get("ad_start_time", 0)
-        if now - ad_time < AD_MIN_TIME:
-            remaining = AD_MIN_TIME - (now - ad_time)
-            await query.answer(
-                f"⏳ Please wait {remaining} more seconds before claiming.",
-                show_alert=True
-            )
-            return
-
-        users[uid]["balance"] += CLAIM_REWARD
-        users[uid]["last_claim"] = now
-        users[uid]["pending_claim"] = False
-
-        # REF BONUS
-        if not users[uid]["claimed_once"]:
-            users[uid]["claimed_once"] = True
-            ref_id = users[uid]["ref_by"]
-            if ref_id and ref_id in users:
-                bonus = CLAIM_REWARD * REF_PERCENT
-                users[ref_id]["balance"] += bonus
-                users[ref_id]["ref_earned"] += bonus
-
-        save_users(users)
-
-        await query.edit_message_text(
-            f"✅ Claim successful!\n+{CLAIM_REWARD} LTC added.",
-            reply_markup=back_keyboard()
         )
 
     # ================= BALANCE =================
@@ -319,7 +316,7 @@ def main():
     app.add_handler(CallbackQueryHandler(menu))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("Bot running secure...")
+    print("Bot running ultra secure...")
     app.run_polling()
 
 
