@@ -9,18 +9,18 @@ from telegram.ext import (
 )
 import json, time, os, requests
 
-print("FINAL SECURE WFD VERSION ACTIVE")
+print("FINAL SECURE WFD + REF VERSION ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FAUCETPAY_API = os.getenv("FAUCETPAY_API")
 
 CLAIM_REWARD = 0.000045
+REF_PERCENT = 0.07
+
 COOLDOWN = 3600
 MIN_WITHDRAW = 0.003
 WITHDRAW_COOLDOWN = 86400
-
-CHANNEL_USERNAME = "@litefaucet57"
 
 FAUCETPAY_REGISTER = "https://faucetpay.io/?r=502868"
 # ==========================================
@@ -46,7 +46,10 @@ def create_user(uid):
         "last_claim": 0,
         "last_withdraw": 0,
         "fp_username": None,
-        "waiting_username": False
+        "waiting_username": False,
+        "ref_by": None,
+        "ref_earned": 0,
+        "claimed_once": False
     }
     save_users(users)
 
@@ -81,6 +84,7 @@ def main_menu_text():
         "🚀 LiteFaucetBot LIVE\n\n"
         "Coin: Litecoin (LTC)\n"
         f"Reward: {CLAIM_REWARD} LTC per claim\n"
+        "Referral: 7% (first claim only)\n"
         "Cooldown: 60 minutes\n"
         f"Min Withdraw: {MIN_WITHDRAW} LTC\n"
         "Withdraw: FaucetPay ONLY\n\n"
@@ -91,9 +95,9 @@ def main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 Claim LTC", callback_data="claim")],
         [InlineKeyboardButton("📊 Balance", callback_data="balance")],
+        [InlineKeyboardButton("👥 Referral", callback_data="referral")],
         [InlineKeyboardButton("💸 Withdraw", callback_data="withdraw")],
         [InlineKeyboardButton("⚙️ Set FaucetPay Username", callback_data="setfp")],
-        [InlineKeyboardButton("📜 Rules", callback_data="rules")]
     ])
 
 def back_keyboard():
@@ -109,18 +113,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
+        # HANDLE REFERRAL
+        if context.args:
+            ref_id = context.args[0]
+            if ref_id != uid and ref_id in users:
+                users[uid]["ref_by"] = ref_id
+                save_users(users)
+
     await update.message.reply_text(
         main_menu_text(),
         reply_markup=main_keyboard()
     )
 
 
-# ================= HANDLE TEXT INPUT =================
+# ================= HANDLE TEXT =================
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
-
-    if uid not in users:
-        create_user(uid)
 
     if users[uid]["waiting_username"]:
         username = update.message.text.strip()
@@ -142,9 +150,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(query.from_user.id)
     now = int(time.time())
 
-    if uid not in users:
-        create_user(uid)
-
     # CLAIM
     if query.data == "claim":
 
@@ -158,6 +163,17 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         users[uid]["balance"] += CLAIM_REWARD
         users[uid]["last_claim"] = now
+
+        # REF BONUS (FIRST CLAIM ONLY)
+        if not users[uid]["claimed_once"]:
+            users[uid]["claimed_once"] = True
+
+            ref_id = users[uid]["ref_by"]
+            if ref_id and ref_id in users:
+                bonus = CLAIM_REWARD * REF_PERCENT
+                users[ref_id]["balance"] += bonus
+                users[ref_id]["ref_earned"] += bonus
+
         save_users(users)
 
         await query.edit_message_text(
@@ -173,7 +189,18 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # SET FAUCETPAY USERNAME
+    # REFERRAL
+    elif query.data == "referral":
+        ref_link = f"https://t.me/{context.bot.username}?start={uid}"
+        earned = users[uid]["ref_earned"]
+
+        await query.edit_message_text(
+            f"👥 Your Referral Link:\n{ref_link}\n\n"
+            f"💰 Total Earned: {earned:.6f} LTC",
+            reply_markup=back_keyboard()
+        )
+
+    # SET USERNAME
     elif query.data == "setfp":
         users[uid]["waiting_username"] = True
         save_users(users)
@@ -192,18 +219,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 f"❌ Minimum withdraw: {MIN_WITHDRAW} LTC\n"
                 f"Your balance: {bal:.6f} LTC\n\n"
-                "⚠️ FaucetPay account required for withdrawals.\n\n"
-                "Don't have one yet?\n"
-                f"Create your FREE account here:\n{FAUCETPAY_REGISTER}",
-                reply_markup=back_keyboard()
-            )
-            return
-
-        if now - users[uid]["last_withdraw"] < WITHDRAW_COOLDOWN:
-            remaining = (WITHDRAW_COOLDOWN - (now - users[uid]["last_withdraw"])) // 3600
-            await query.edit_message_text(
-                f"⛔ Withdraw allowed once per 24 hours.\n"
-                f"Try again in {remaining} hours.",
+                "Don't have a FaucetPay account?\n"
+                f"Register here:\n{FAUCETPAY_REGISTER}",
                 reply_markup=back_keyboard()
             )
             return
@@ -213,7 +230,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not username:
             await query.edit_message_text(
                 "⚠️ Please set your FaucetPay username first.\n\n"
-                "Don't have a FaucetPay account?\n"
                 f"Register here:\n{FAUCETPAY_REGISTER}",
                 reply_markup=back_keyboard()
             )
@@ -233,13 +249,10 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.edit_message_text(
-                f"❌ Withdraw failed:\n{message}\n\n"
-                "Need a FaucetPay account?\n"
-                f"Register here:\n{FAUCETPAY_REGISTER}",
+                f"❌ Withdraw failed:\n{message}",
                 reply_markup=back_keyboard()
             )
 
-    # BACK TO MENU
     elif query.data == "menu":
         await query.edit_message_text(
             main_menu_text(),
