@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 import json, time, os, requests
 
-print("FINAL SECURE WFD + REF VERSION ACTIVE")
+print("FINAL SECURE WFD + REF + CHANNEL + AD ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -20,7 +20,11 @@ REF_PERCENT = 0.07
 
 COOLDOWN = 3600
 MIN_WITHDRAW = 0.003
-WITHDRAW_COOLDOWN = 86400
+
+CHANNEL_USERNAME = "@litefaucet57"
+
+AD_LINK = "https://free-faucet.github.io/ad.litebotmon/"
+SUCCESS_LINK = "https://free-faucet.github.io/ad.litebotmon/success.html"
 
 FAUCETPAY_REGISTER = "https://faucetpay.io/?r=502868"
 # ==========================================
@@ -39,7 +43,6 @@ def save_users(data):
 
 users = load_users()
 
-
 def create_user(uid):
     users[uid] = {
         "balance": 0,
@@ -49,15 +52,24 @@ def create_user(uid):
         "waiting_username": False,
         "ref_by": None,
         "ref_earned": 0,
-        "claimed_once": False
+        "claimed_once": False,
+        "pending_claim": False
     }
     save_users(users)
+
+
+# ================= CHANNEL CHECK =================
+async def is_joined(user_id, bot):
+    try:
+        member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
 
 
 # ================= FAUCETPAY =================
 def send_withdraw(username, amount):
     url = "https://faucetpay.io/api/v1/send"
-
     payload = {
         "api_key": FAUCETPAY_API,
         "amount": amount,
@@ -113,7 +125,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
-        # HANDLE REFERRAL
         if context.args:
             ref_id = context.args[0]
             if ref_id != uid and ref_id in users:
@@ -132,7 +143,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if users[uid]["waiting_username"]:
         username = update.message.text.strip()
-
         users[uid]["fp_username"] = username
         users[uid]["waiting_username"] = False
         save_users(users)
@@ -150,8 +160,15 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(query.from_user.id)
     now = int(time.time())
 
-    # CLAIM
+    # ================= CLAIM =================
     if query.data == "claim":
+
+        if not await is_joined(query.from_user.id, context.bot):
+            await query.edit_message_text(
+                f"⚠️ You must join {CHANNEL_USERNAME} first!",
+                reply_markup=back_keyboard()
+            )
+            return
 
         if now - users[uid]["last_claim"] < COOLDOWN:
             remaining = (COOLDOWN - (now - users[uid]["last_claim"])) // 60
@@ -161,13 +178,33 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        users[uid]["pending_claim"] = True
+        save_users(users)
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 View Advertisement", url=AD_LINK)],
+            [InlineKeyboardButton("✅ I've Completed", callback_data="complete_claim")]
+        ])
+
+        await query.edit_message_text(
+            "📢 Please view the advertisement first.\n\nAfter finishing, click 'I've Completed'.",
+            reply_markup=keyboard
+        )
+
+    # ================= COMPLETE CLAIM =================
+    elif query.data == "complete_claim":
+
+        if not users[uid]["pending_claim"]:
+            await query.answer("No pending claim!", show_alert=True)
+            return
+
         users[uid]["balance"] += CLAIM_REWARD
         users[uid]["last_claim"] = now
+        users[uid]["pending_claim"] = False
 
-        # REF BONUS (FIRST CLAIM ONLY)
+        # REF BONUS
         if not users[uid]["claimed_once"]:
             users[uid]["claimed_once"] = True
-
             ref_id = users[uid]["ref_by"]
             if ref_id and ref_id in users:
                 bonus = CLAIM_REWARD * REF_PERCENT
@@ -181,7 +218,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # BALANCE
+    # ================= BALANCE =================
     elif query.data == "balance":
         bal = users[uid]["balance"]
         await query.edit_message_text(
@@ -189,7 +226,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # REFERRAL
+    # ================= REFERRAL =================
     elif query.data == "referral":
         ref_link = f"https://t.me/{context.bot.username}?start={uid}"
         earned = users[uid]["ref_earned"]
@@ -200,7 +237,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # SET USERNAME
+    # ================= SET USERNAME =================
     elif query.data == "setfp":
         users[uid]["waiting_username"] = True
         save_users(users)
@@ -210,7 +247,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_keyboard()
         )
 
-    # WITHDRAW
+    # ================= WITHDRAW =================
     elif query.data == "withdraw":
 
         bal = users[uid]["balance"]
@@ -239,7 +276,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if success:
             users[uid]["balance"] = 0
-            users[uid]["last_withdraw"] = now
             save_users(users)
 
             await query.edit_message_text(
