@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 import json, time, os, requests
 
-print("FINAL ULTRA SECURE VERSION ACTIVE")
+print("FINAL ULTRA SECURE V2 ACTIVE")
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -23,9 +23,7 @@ MIN_WITHDRAW = 0.003
 
 CHANNEL_USERNAME = "@litefaucet57"
 
-# IMPORTANT: uid will be added automatically
 AD_LINK = "https://free-faucet.github.io/ad.litebotmon/?uid="
-
 FAUCETPAY_REGISTER = "https://faucetpay.io/?r=502868"
 # ==========================================
 
@@ -52,7 +50,8 @@ def create_user(uid):
         "ref_by": None,
         "ref_earned": 0,
         "claimed_once": False,
-        "pending_claim": False
+        "pending_claim": False,
+        "ad_click_time": 0   # TIMER ANTI INSTANT VERIFY
     }
     save_users(users)
 
@@ -125,7 +124,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid not in users:
         create_user(uid)
 
-    # HANDLE VERIFY CLAIM
     if context.args:
         arg = context.args[0]
 
@@ -135,7 +133,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if verify_id == uid and users[uid]["pending_claim"]:
 
-                # Cooldown check
+                # 🔒 15 SECOND MINIMUM STAY CHECK
+                if now - users[uid]["ad_click_time"] < 15:
+                    await update.message.reply_text(
+                        "⚠️ Please stay on the advertisement page at least 15 seconds."
+                    )
+                    return
+
+                # ⏳ COOLDOWN CHECK
                 if now - users[uid]["last_claim"] < COOLDOWN:
                     await update.message.reply_text("⏳ Cooldown active.")
                     return
@@ -214,6 +219,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         users[uid]["pending_claim"] = True
+        users[uid]["ad_click_time"] = now  # START TIMER
         save_users(users)
 
         ad_url = f"{AD_LINK}{uid}"
@@ -224,7 +230,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         await query.edit_message_text(
-            "📢 Click the link below and complete the advertisement.\n\n"
+            "📢 Click the link below and stay at least 15 seconds.\n\n"
             "You will be redirected back automatically after finishing.",
             reply_markup=keyboard
         )
@@ -316,7 +322,7 @@ def main():
     app.add_handler(CallbackQueryHandler(menu))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("Bot running ultra secure...")
+    print("Bot running ULTRA SECURE V2...")
     app.run_polling()
 
 
